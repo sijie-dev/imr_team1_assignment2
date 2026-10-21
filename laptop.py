@@ -260,19 +260,45 @@ class LaptopPilot:
         self.Q[G, G]       = np.deg2rad(0.3)**2    # 每步朝向额外漂 0.3°
         # self.Q[DOTX, DOTX] = 0.01**2              # 实际速度和命令差 0.01 m/s
         # self.Q[DOTG, DOTG] = np.deg2rad(2)**2    # 实际角速度和命令差 2°/s
-
+        
         self.Q[DOTX, DOTX] = 0.01**2              # 实际速度和命令差 0.01 m/s
         self.Q[DOTG, DOTG] = np.deg2rad(100)**2
 
+        #Create message of initial estimated pose for Noise Matrix Logging
+        msg_init_est_pose = self.pose_parse([datetime.utcnow().timestamp(),
+                                             self.est_pose_northings_m,
+                                             self.est_pose_eastings_m,
+                                             0,
+                                             0,
+                                             0,
+                                             self.est_pose_yaw_rad])
+        #Create Log of initial (constant) Process Noise Q
+        msg_init_Q = Odometry(header = msg_init_est_pose.header,
+                             pose = PoseWithCovariance(pose = msg_init_est_pose.pose,
+                                                      covariance = self.Q.flatten().tolist()))
+        self.datalog.log(msg_init_Q, topic_name="/init_Q")
+        
         # Aruco 协方差矩阵
         self.R_ne = Identity(2)
         self.R_ne[0, 0] = 0.01 ** 2 # N
         self.R_ne[1, 1] = 0.01 ** 2 # E
 
+        #Create Log of initial (constant) translational Measurement Noise R_ne
+        msg_init_R_ne = Odometry(header = msg_init_est_pose.header,
+                     pose = PoseWithCovariance(pose = msg_init_est_pose.pose,
+                                              covariance = self.R_ne.flatten().tolist()))
+        self.datalog.log(msg_init_R_ne, topic_name="/init_R_ne")
+
         self.R_g = Identity(1)
         self.R_g[0, 0] = np.deg2rad(0.01) ** 2 # gamma
         # self.R_g[0, 0] = np.deg2rad(2) ** 2 # gamma
 
+        #Create Log of initial (constant) radial Measurement Noise R_g
+        msg_init_R_g = Odometry(header = msg_init_est_pose.header,
+                     pose = PoseWithCovariance(pose = msg_init_est_pose.pose,
+                                              covariance = self.R_g.flatten().tolist()))
+        self.datalog.log(msg_init_R_g, topic_name="/init_R_g")
+        
         # measured pose
         self.measured_pose_timestamp_s = None
         self.measured_pose_northings_m = None
