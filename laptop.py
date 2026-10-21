@@ -97,7 +97,7 @@ def motion_model(state, u, dt):
         F[E, DOTX] = (1/DOTG_k)*(np.cos(G_k_1)-np.cos(G_k))
         F[E, DOTG] = (DOTX_k/(DOTG_k**2))*(np.cos(G_k)-np.cos(G_k_1))+(DOTX_k*dt/DOTG_k)*np.sin(G_k)
         F[G, DOTG] = dt
-    # important
+    # important, speed relying on the wheel_speed, so it's independent, so 导函数 is 0
     F[DOTX, DOTX] = 0
     F[DOTG, DOTG] = 0
     return state, F    
@@ -250,23 +250,28 @@ class LaptopPilot:
         self.init_covariance[E, E]       = 0.02**2
         self.init_covariance[G, G]       = np.deg2rad(2)**2    # 起始朝向 σ = 2°
         self.init_covariance[DOTX, DOTX] = 0.01**2              # 速度 σ = 0.01 m/s
-        self.init_covariance[DOTG, DOTG] = np.deg2rad(1)**2    # 角速度 σ = 1°/s
+        self.init_covariance[DOTG, DOTG] = np.deg2rad(100)**2    # 角速度 σ = 1°/s
+        # self.init_covariance[DOTG, DOTG] = np.deg2rad(1)**2    # 角速度 σ = 1°/s
 
         # motion model sigma initialize -> 运动模型协方差矩阵
         self.Q = Identity(5)
         self.Q[N, N]       = 0.002**2              # 每步位置额外漂 0.002 m
         self.Q[E, E]       = 0.002**2
         self.Q[G, G]       = np.deg2rad(0.3)**2    # 每步朝向额外漂 0.3°
+        # self.Q[DOTX, DOTX] = 0.01**2              # 实际速度和命令差 0.01 m/s
+        # self.Q[DOTG, DOTG] = np.deg2rad(2)**2    # 实际角速度和命令差 2°/s
+
         self.Q[DOTX, DOTX] = 0.01**2              # 实际速度和命令差 0.01 m/s
-        self.Q[DOTG, DOTG] = np.deg2rad(2)**2    # 实际角速度和命令差 2°/s
+        self.Q[DOTG, DOTG] = np.deg2rad(100)**2
 
         # Aruco 协方差矩阵
         self.R_ne = Identity(2)
-        self.R_ne[0, 0] = 0.02 ** 2 # N
-        self.R_ne[1, 1] = 0.02 ** 2 # E
+        self.R_ne[0, 0] = 0.01 ** 2 # N
+        self.R_ne[1, 1] = 0.01 ** 2 # E
 
         self.R_g = Identity(1)
-        self.R_g[0, 0] = np.deg2rad(2) ** 2 # gamma
+        self.R_g[0, 0] = np.deg2rad(0.01) ** 2 # gamma
+        # self.R_g[0, 0] = np.deg2rad(2) ** 2 # gamma
 
         # measured pose
         self.measured_pose_timestamp_s = None
