@@ -221,8 +221,10 @@ class LaptopPilot:
 
 
         # # # fifth test
-        self.tau_s = 1.0
-        self.L = 0.25
+        # self.tau_s = 1.0
+        # self.L = 0.25
+        self.tau_s = 0.002
+        self.L = 0.1
 
         self.v_max = 0.2
         self.w_max = np.deg2rad(30)
@@ -771,6 +773,16 @@ class LaptopPilot:
             )
 
             p_ref, u_ref = self.path.p_u_sample(self.t)
+
+            # add p_ref log
+            ref_msg = self.pose_parse([
+                                      t_now, 
+                                      float(p_ref[0, 0]),
+                                      float(p_ref[1, 0]),
+                                      0, 0, 0,
+                                      float(p_ref[2, 0]),
+                                      ])
+            self.datalog.log(ref_msg, topic_name="/p_ref")
         # IMR_P3_T2_POSE_ERROR: Calculate the difference between the
         # reference and estimated poses, wrap the yaw error and express the
         # pose error in the robot body frame.
@@ -803,6 +815,7 @@ class LaptopPilot:
             du = feedback_control(ds, self.k_s, self.k_n, self.k_g)
             # feedforward + feedback
             u = u_ref + du
+
 
             # update gains for next iteration
             self.k_n = 2 * u[0] / (self.L ** 2)
