@@ -1,6 +1,5 @@
 ## Q1 DataLogger filename defined?
 
-<<<<<<< Updated upstream
 - No. Line 351 passes only a folder, DataLogger(log_dir="logs"). DataLogger names the file itself from the start time, The name is stored in self.datalog.filename, and stopcommand() prints it at line 386 ("Data saved in ...").
 =======
 ## 0. Brief understanding
@@ -32,7 +31,6 @@ When ArUco frames are missing, the EKF only runs the motion-model prediction. Th
 
 **I think it is not the main cause**
 In **Test 1**, R was large (heading 10°, position 10), so the filter trusts the motion model much more and the estimate should change smoothly, yet the robot **still reversed**. Changing Q by two orders of magnitude also made no difference. A small R may make things worse, but it is unlikely to be the root cause.
->>>>>>> Stashed changes
 
 
 ## Q2 Aruco already logged in correct pose format from Line 581, this is where measurement is updated based on Aruco measurement/observation right?
