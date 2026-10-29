@@ -171,7 +171,7 @@ class LaptopPilot:
         # lists and specify whether they are relative to the initial position
         #----------------------------------------------------------------
         # path
-        self.northings_path = [0, 1, 1, 0, 0, 1, 1, 0, 0]
+        self.northings_path = [0, 1.5, 1.5, 0, 0, 1.5, 1.5, 0, 0]
         self.eastings_path = [0, 0, 1, 1, 0, 0, 1, 1, 0]
 
         self.relative_path = True
@@ -221,10 +221,8 @@ class LaptopPilot:
 
 
         # # # fifth test
-        # self.tau_s = 1.0
-        # self.L = 0.25
-        self.tau_s = 0.002
-        self.L = 0.1
+        self.tau_s = 1.0
+        self.L = 0.25
 
         self.v_max = 0.2
         self.w_max = np.deg2rad(30)
@@ -380,6 +378,16 @@ class LaptopPilot:
                         pose = PoseWithCovariance(pose = msg_init_est_pose.pose,
                                                 covariance = self.R_g.flatten().tolist()))
         self.datalog.log(msg_init_R_g, topic_name="/init_R_g")
+
+        tau_msg = Odometry(header = msg_init_est_pose.header,
+                           pose = PoseWithCovariance(pose = msg_init_est_pose.pose,
+                                                     covariance = [float(self.tau_s)]))
+        self.datalog.log(tau_msg, topic_name = "/tau_s_log")
+
+        L_msg = Odometry(header = msg_init_est_pose.header,
+                                   pose = PoseWithCovariance(pose = msg_init_est_pose.pose,
+                                                             covariance = [float(self.L)]))
+        self.datalog.log(L_msg, topic_name = "/L_log")
 
         # Wheels speeds in rad/s are encoded as a Vector3 with timestamp, 
         # with x for the right wheel and y for the left wheel.        
@@ -816,7 +824,6 @@ class LaptopPilot:
             # feedforward + feedback
             u = u_ref + du
 
-
             # update gains for next iteration
             self.k_n = 2 * u[0] / (self.L ** 2)
             self.k_g = u[0] / self.L
@@ -847,6 +854,12 @@ class LaptopPilot:
             if u[1] < -self.w_max:
                 u[1] = -self.w_max
             q = self.ddrive.inv_kinematics(u)
+            
+            u_msg = Vector3Stamped()
+            u_msg.vector.x = u[0, 0]
+            u_msg.vector.y = u[1, 0]
+
+            self.datalog.log(u_msg, topic_name = "/u_log")
         #----------------------------------------------------------------
         # IMR_P2_T1_WHEEL_COMMANDS: Change the right and left wheel rates
         # here to produce twist, linear and rotational motion.
