@@ -225,6 +225,7 @@ class LaptopPilot:
         self.L = 0.25
 
         self.v_max = 0.2
+        self.v_min = 0.02
         self.w_max = np.deg2rad(30)
 
         self.initialise_control = True
@@ -825,8 +826,8 @@ class LaptopPilot:
             u = u_ref + du
 
             # update gains for next iteration
-            self.k_n = 2 * u[0] / (self.L ** 2)
-            self.k_g = u[0] / self.L
+            self.k_n = 2 * max(u[0], self.v_min) / (self.L ** 2)
+            self.k_g = max(u[0], self.v_min) / self.L
         #----------------------------------------------------------------
 
         #-------------- Guided-practicals -------------------------------
@@ -845,8 +846,9 @@ class LaptopPilot:
             if u[0] > self.v_max:
                 u[0] = self.v_max
 
-            if u[0] < -self.v_max:
-                u[0] = -self.v_max
+            # avoid backwards
+            if u[0] < 0:
+                u[0] = 0
 
             if u[1] > self.w_max:
                 u[1] = self.w_max
