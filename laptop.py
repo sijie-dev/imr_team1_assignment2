@@ -781,6 +781,13 @@ class LaptopPilot:
                 self.wp_accept_radius
             )
 
+            # add waypoint log
+            wp_msg = Vector3Stamped()
+            wp_msg.vector.x = self.path.wp_id  
+            wp_msg.vector.y = float(self.path.P_arc[self.path.wp_id][0])   
+            wp_msg.vector.z = float(self.path.P_arc[self.path.wp_id][1])   
+            self.datalog.log(wp_msg, topic_name = "/wp")
+
             p_ref, u_ref = self.path.p_u_sample(self.t)
 
             # add p_ref log
