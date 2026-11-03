@@ -129,8 +129,8 @@ class LaptopPilot:
         # IMR_P2_T1_ARUCO: Set the arena port and robot marker ID here.
         #----------------------------------------------------------------
         aruco_params = {
-            "port": 50001,  # Port to listen Arena1: 50001; Arena2: 50002 (CHANGE THIS to match the Arena you are testing in)
-            "marker_id": 23,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
+            "port": 50002,  # Port to listen Arena1: 50001; Arena2: 50002 (CHANGE THIS to match the Arena you are testing in)
+            "marker_id": 22,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
         }
         self.robot_ip = "192.168.90.1" # Don't change this        
 
@@ -198,33 +198,16 @@ class LaptopPilot:
         # acceleration, waypoint acceptance radius and turning radius here.
         self.v_traj = 0.1
         self.a_traj = 0.1
-        self.wp_accept_radius = 0.2
+        self.wp_accept_radius = 0.25
         self.turning_radius = 0.3
         # IMR_P3_T2_CONTROL_PARAMETERS: Define the controller response
         # parameters, motion limits and control-initialisation flag here.
 
-        # first test
-        # self.tau_s = 1.0
-        # self.L = 0.5
+        # tau & L
+        self.tau_s = 1.5
+        self.L = 1
 
-        # # second test
-        # self.tau_s = 0.5
-        # self.L = 0.5
-
-        # # third test
-        # self.tau_s = 0.5
-        # self.L = 1
-
-        # # fourth test
-        # self.tau_s = 1.0
-        # self.L = 1.0
-
-
-        # # # fifth test
-        self.tau_s = 1.0
-        self.L = 0.25
-
-        self.v_max = 0.2
+        self.v_max = 0.1
         self.v_min = 0.02
         self.w_max = np.deg2rad(30)
 
@@ -262,18 +245,24 @@ class LaptopPilot:
         # self.Q[DOTX, DOTX] = 0.01**2              # 实际速度和命令差 0.01 m/s
         # self.Q[DOTG, DOTG] = np.deg2rad(2)**2    # 实际角速度和命令差 2°/s
         
+        # self.Q[DOTX, DOTX] = 0.03**2              # 实际速度和命令差 0.01 m/s
+        # self.Q[DOTG, DOTG] = np.deg2rad(3)**2
+
         self.Q[DOTX, DOTX] = 0.01**2              # 实际速度和命令差 0.01 m/s
-        self.Q[DOTG, DOTG] = np.deg2rad(100)**2
+        self.Q[DOTG, DOTG] = np.deg2rad(1)**2
 
         
         # Aruco 协方差矩阵
         self.R_ne = Identity(2)
-        self.R_ne[0, 0] = 0.01 ** 2 # N
-        self.R_ne[1, 1] = 0.01 ** 2 # E
+        # self.R_ne[0, 0] = 0.25 ** 2 # N
+        # self.R_ne[1, 1] = 0.25 ** 2 # E
 
+        # this need to modify a little bit smaller
+        self.R_ne[0, 0] = 1 ** 2 # N
+        self.R_ne[1, 1] = 1 ** 2 # E
 
         self.R_g = Identity(1)
-        self.R_g[0, 0] = np.deg2rad(0.01) ** 2 # gamma
+        self.R_g[0, 0] = np.deg2rad(20) ** 2 # gamma
         # self.R_g[0, 0] = np.deg2rad(2) ** 2 # gamma
         
         # measured pose
@@ -881,8 +870,12 @@ class LaptopPilot:
             wheel_speed_msg = Vector3Stamped()
             # wheel_speed_msg.vector.x = 2 * np.pi  # Right wheel 0.5 rev/s = 1*pi rad/s
             # wheel_speed_msg.vector.y = 1 * np.pi  # Left wheel 1 rev/s = 2*pi rad/s
-            wheel_speed_msg.vector.x = q[0, 0]   # Right wheel
+            
+            wheel_speed_msg.vector.x = q[0, 0]   # Right wheelq
             wheel_speed_msg.vector.y = q[1, 0]   # Left wheel
+            # wheel_speed_msg.vector.x = 0  # Right wheel
+            # wheel_speed_msg.vector.y = 0   # Left wheel
+
 
             self.cmd_wheelrate_right = wheel_speed_msg.vector.x
             self.cmd_wheelrate_left = wheel_speed_msg.vector.y
