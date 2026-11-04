@@ -259,12 +259,12 @@ class LaptopPilot:
         self.R_ne = Identity(2)
 
         # this need to modify a little bit smaller around 0.05
-        self.R_ne[0, 0] = (1 * G_STD_0) ** 2 # N
-        self.R_ne[1, 1] = (1 * N_STD_0) ** 2 # E
+        self.R_ne[0, 0] = (1 * N_STD_0) ** 2 # N
+        self.R_ne[1, 1] = (1 * E_STD_0) ** 2 # E
 
         # around 15 - 30
         self.R_g = Identity(1)
-        self.R_g[0, 0] = (1 * E_STD_0) ** 2 # gamma
+        self.R_g[0, 0] = (1 * G_STD_0) ** 2 # gamma
         
         # measured pose
         self.measured_pose_timestamp_s = None
