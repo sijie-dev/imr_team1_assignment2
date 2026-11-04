@@ -252,8 +252,8 @@ class LaptopPilot:
         self.Q[G, G]       = np.deg2rad(0.3)**2    # 每步朝向额外漂 0.3°
 
         # Test 0 : Experimental baseline
-        self.Q[DOTX, DOTX] = 0.1 * Q_DOTX_0            
-        self.Q[DOTG, DOTG] = 0.1 * Q_DOTG_0
+        self.Q[DOTX, DOTX] = 1 * Q_DOTX_0            
+        self.Q[DOTG, DOTG] = 1 * Q_DOTG_0
 
         # Aruco 协方差矩阵
         self.R_ne = Identity(2)
