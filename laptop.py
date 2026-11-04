@@ -49,6 +49,15 @@ G = 2
 DOTX = 3
 DOTG = 4
 
+# For Q Measured process noise
+Q_DOTX_0 = 0.0014405678128945575   # Linear velocity variance
+Q_DOTG_0 = 0.3254315306543484      # Angular velocity variance
+
+# For R measurement noise
+N_STD_0 = 0.019861190712390085               # Northing [m]
+E_STD_0 = 0.02335564849035043                 # Easting [m]
+G_STD_0 = np.deg2rad(0.5461727054565232)      # Heading [rad]
+
 # predict，得到 F 和 新一轮的 mu_bar
 def motion_model(state, u, dt):
     N_k_1 = state[N,0]
@@ -234,36 +243,28 @@ class LaptopPilot:
         self.init_covariance[E, E]       = 0.02**2
         self.init_covariance[G, G]       = np.deg2rad(2)**2    # 起始朝向 σ = 2°
         self.init_covariance[DOTX, DOTX] = 0.01**2              # 速度 σ = 0.01 m/s
-        self.init_covariance[DOTG, DOTG] = np.deg2rad(100)**2    # 角速度 σ = 1°/s
-        # self.init_covariance[DOTG, DOTG] = np.deg2rad(1)**2    # 角速度 σ = 1°/s
+        self.init_covariance[DOTG, DOTG] = np.deg2rad(1)**2    # 角速度 σ = 1°/s
 
         # motion model sigma initialize -> 运动模型协方差矩阵
         self.Q = Identity(5)
         self.Q[N, N]       = 0.002**2              # 每步位置额外漂 0.002 m
         self.Q[E, E]       = 0.002**2
         self.Q[G, G]       = np.deg2rad(0.3)**2    # 每步朝向额外漂 0.3°
-        # self.Q[DOTX, DOTX] = 0.01**2              # 实际速度和命令差 0.01 m/s
-        # self.Q[DOTG, DOTG] = np.deg2rad(2)**2    # 实际角速度和命令差 2°/s
-        
-        # self.Q[DOTX, DOTX] = 0.03**2              # 实际速度和命令差 0.01 m/s
-        # self.Q[DOTG, DOTG] = np.deg2rad(3)**2
 
-        self.Q[DOTX, DOTX] = 0.01**2              # 实际速度和命令差 0.01 m/s
-        self.Q[DOTG, DOTG] = np.deg2rad(1)**2
+        # Test 0 : Experimental baseline
+        self.Q[DOTX, DOTX] = 0.1 * Q_DOTX_0            
+        self.Q[DOTG, DOTG] = 0.1 * Q_DOTG_0
 
-        
         # Aruco 协方差矩阵
         self.R_ne = Identity(2)
-        # self.R_ne[0, 0] = 0.25 ** 2 # N
-        # self.R_ne[1, 1] = 0.25 ** 2 # E
 
-        # this need to modify a little bit smaller
-        self.R_ne[0, 0] = 1 ** 2 # N
-        self.R_ne[1, 1] = 1 ** 2 # E
+        # this need to modify a little bit smaller around 0.05
+        self.R_ne[0, 0] = (1 * G_STD_0) ** 2 # N
+        self.R_ne[1, 1] = (1 * N_STD_0) ** 2 # E
 
+        # around 15 - 30
         self.R_g = Identity(1)
-        self.R_g[0, 0] = np.deg2rad(20) ** 2 # gamma
-        # self.R_g[0, 0] = np.deg2rad(2) ** 2 # gamma
+        self.R_g[0, 0] = (1 * E_STD_0) ** 2 # gamma
         
         # measured pose
         self.measured_pose_timestamp_s = None
