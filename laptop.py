@@ -49,9 +49,26 @@ G = 2
 DOTX = 3
 DOTG = 4
 
-# For Q Measured process noise
-Q_DOTX_0 = 0.0014405678128945575   # Linear velocity variance
-Q_DOTG_0 = 0.3254315306543484      # Angular velocity variance
+# For Q process noise (standard values, computed by calc_Q.py from the
+# Assignment 1 physical runs, kinematics only). Motion model restarted at ArUco
+# fix k and compared with fix k+m (m = 1..8); error variance fitted as
+# c + a*T^2 + b*T: b (random drift) -> Q_NE, Q_G; a (persistent velocity
+# error) -> Q_DOTX, Q_DOTG. Values are per EKF step (dt = 0.1 s).
+Q_NE_0   = 2.42e-05   # position drift per step [m^2],       sigma = 4.9 mm
+Q_G_0    = 2.09e-05   # heading drift per step [rad^2],      sigma = 0.26 deg
+Q_DOTX_0 = 6.57e-04   # linear velocity variance [(m/s)^2],  sigma = 0.026 m/s
+Q_DOTG_0 = 3.42e-03   # angular velocity variance [(rad/s)^2], sigma = 3.4 deg/s
+
+# Experiments: the whole Q is scaled, R stays the same.
+# Change EXPERIMENT before each run; the label is printed and logged in /experiment.
+EXPERIMENTS = {
+    1: ("EXP1_Q_measured",          1.0),    # baseline: measured Q
+    2: ("EXP2_Q_x0.1_trust_model",  0.1),    # filter trusts the motion model, ArUco corrections weak
+    3: ("EXP3_Q_x10_trust_aruco",   10.0),   # filter leans towards ArUco
+    4: ("EXP4_Q_x100_follow_aruco", 100.0),  # filter follows ArUco almost directly (incl. ArUco flips)
+}
+EXPERIMENT = 1
+EXP_NAME, Q_SCALE = EXPERIMENTS[EXPERIMENT]
 
 # For R measurement noise
 N_STD_0 = 0.019861190712390085               # Northing [m]
@@ -247,24 +264,20 @@ class LaptopPilot:
 
         # motion model sigma initialize -> 运动模型协方差矩阵
         self.Q = Identity(5)
-        self.Q[N, N]       = 0.002**2              # 每步位置额外漂 0.002 m
-        self.Q[E, E]       = 0.002**2
-        self.Q[G, G]       = np.deg2rad(0.3)**2    # 每步朝向额外漂 0.3°
-
-        # Test 0 : Experimental baseline
-        self.Q[DOTX, DOTX] = 1 * Q_DOTX_0            
-        self.Q[DOTG, DOTG] = 1 * Q_DOTG_0
+        self.Q[N, N]       = Q_SCALE * Q_NE_0
+        self.Q[E, E]       = Q_SCALE * Q_NE_0
+        self.Q[G, G]       = Q_SCALE * Q_G_0
+        self.Q[DOTX, DOTX] = Q_SCALE * Q_DOTX_0
+        self.Q[DOTG, DOTG] = Q_SCALE * Q_DOTG_0
+        print("Experiment", EXPERIMENT, EXP_NAME, ": Q scale", Q_SCALE)
 
         # Aruco 协方差矩阵
         self.R_ne = Identity(2)
+        self.R_ne[0, 0] = N_STD_0 ** 2 # N
+        self.R_ne[1, 1] = E_STD_0 ** 2 # E
 
-        # this need to modify a little bit smaller around 0.05
-        self.R_ne[0, 0] = (1 * N_STD_0) ** 2 # N
-        self.R_ne[1, 1] = (1 * E_STD_0) ** 2 # E
-
-        # around 15 - 30
         self.R_g = Identity(1)
-        self.R_g[0, 0] = (1 * G_STD_0) ** 2 # gamma
+        self.R_g[0, 0] = G_STD_0 ** 2 # gamma
         
         # measured pose
         self.measured_pose_timestamp_s = None
@@ -380,6 +393,13 @@ class LaptopPilot:
                                                              covariance = [float(self.L)]))
         self.datalog.log(L_msg, topic_name = "/L_log")
 
+        # experiment label: frame_id = name, x = experiment id, y = Q scale
+        exp_msg = Vector3Stamped()
+        exp_msg.header.frame_id = EXP_NAME
+        exp_msg.vector.x = EXPERIMENT
+        exp_msg.vector.y = Q_SCALE
+        self.datalog.log(exp_msg, topic_name = "/experiment")
+
         # Wheels speeds in rad/s are encoded as a Vector3 with timestamp, 
         # with x for the right wheel and y for the left wheel.        
         self.wheel_speed_pub = Publisher(
@@ -414,7 +434,7 @@ class LaptopPilot:
         self.true_wheel_speed_sub.stop()
         if self.simulation: self.groundtruth_sub.stop()
 
-        print("Data saved in ",self.datalog.filename)
+        print("Data saved in ",self.datalog.filename, "| experiment", EXPERIMENT, EXP_NAME)
                  
     def true_wheel_speeds_callback(self, msg):
         print("Received sensed wheel speeds: R=", msg.vector.x,", L=", msg.vector.y)
