@@ -59,21 +59,24 @@ Q_G_0    = 2.09e-05   # heading drift per step [rad^2],      sigma = 0.26 deg
 Q_DOTX_0 = 6.57e-04   # linear velocity variance [(m/s)^2],  sigma = 0.026 m/s
 Q_DOTG_0 = 3.42e-03   # angular velocity variance [(rad/s)^2], sigma = 3.4 deg/s
 
-# Experiments: the whole Q is scaled, R stays the same.
-# Change EXPERIMENT before each run; the label is printed and logged in /experiment.
-EXPERIMENTS = {
-    1: ("EXP1_Q_measured",          1.0),    # baseline: measured Q
-    2: ("EXP2_Q_x0.1_trust_model",  0.1),    # filter trusts the motion model, ArUco corrections weak
-    3: ("EXP3_Q_x10_trust_aruco",   10.0),   # filter leans towards ArUco
-    4: ("EXP4_Q_x100_follow_aruco", 100.0),  # filter follows ArUco almost directly (incl. ArUco flips)
-}
-EXPERIMENT = 1
-EXP_NAME, Q_SCALE = EXPERIMENTS[EXPERIMENT]
-
-# For R measurement noise
+# For R measurement noise, measured with the robot stationary
 N_STD_0 = 0.019861190712390085               # Northing [m]
 E_STD_0 = 0.02335564849035043                 # Easting [m]
 G_STD_0 = np.deg2rad(0.5461727054565232)      # Heading [rad]
+R_STATIC = (N_STD_0, E_STD_0, G_STD_0)
+
+# Experiments: (label, Q scale, R std, R variance scale)
+# The estimate depends mainly on the Q/R ratio, so the four runs sweep
+# Q/R = x10, x1, x0.1, x0.01 relative to the measured values.
+# Change EXPERIMENT before each run; the label is printed and logged in /experiment.
+EXPERIMENTS = {
+    1: ("EXP1_baseline",           1.0,  R_STATIC, 1.0),    # measured Q and R
+    2: ("EXP2_R_x100_trust_model", 1.0,  R_STATIC, 100.0),  # Q/R x0.01: R std x10, ArUco barely corrects
+    3: ("EXP3_Q_x10_trust_aruco",  10.0, R_STATIC, 1.0),    # Q/R x10: estimate follows ArUco more
+    4: ("EXP4_R_x10_trust_model",  1.0,  R_STATIC, 10.0),   # Q/R x0.1: estimate follows the motion model more
+}
+EXPERIMENT = 1
+EXP_NAME, Q_SCALE, R_STD, R_SCALE = EXPERIMENTS[EXPERIMENT]
 
 # predict，得到 F 和 新一轮的 mu_bar
 def motion_model(state, u, dt):
@@ -233,7 +236,7 @@ class LaptopPilot:
         self.tau_s = 1.5
         self.L = 1
 
-        self.v_max = 0.1
+        self.v_max = 0.15
         self.v_min = 0.02
         self.w_max = np.deg2rad(30)
 
@@ -269,15 +272,17 @@ class LaptopPilot:
         self.Q[G, G]       = Q_SCALE * Q_G_0
         self.Q[DOTX, DOTX] = Q_SCALE * Q_DOTX_0
         self.Q[DOTG, DOTG] = Q_SCALE * Q_DOTG_0
-        print("Experiment", EXPERIMENT, EXP_NAME, ": Q scale", Q_SCALE)
-
         # Aruco 协方差矩阵
         self.R_ne = Identity(2)
-        self.R_ne[0, 0] = N_STD_0 ** 2 # N
-        self.R_ne[1, 1] = E_STD_0 ** 2 # E
+        self.R_ne[0, 0] = R_SCALE * R_STD[0] ** 2 # N
+        self.R_ne[1, 1] = R_SCALE * R_STD[1] ** 2 # E
 
         self.R_g = Identity(1)
-        self.R_g[0, 0] = G_STD_0 ** 2 # gamma
+        self.R_g[0, 0] = R_SCALE * R_STD[2] ** 2 # gamma
+
+        print("Experiment", EXPERIMENT, EXP_NAME, ": Q scale", Q_SCALE,
+              "| R std N %.4f m, E %.4f m, G %.2f deg, R scale %g"
+              % (R_STD[0], R_STD[1], np.rad2deg(R_STD[2]), R_SCALE))
         
         # measured pose
         self.measured_pose_timestamp_s = None
@@ -393,11 +398,13 @@ class LaptopPilot:
                                                              covariance = [float(self.L)]))
         self.datalog.log(L_msg, topic_name = "/L_log")
 
-        # experiment label: frame_id = name, x = experiment id, y = Q scale
+        # experiment label: frame_id = name, x = experiment id, y = Q scale, z = R scale
+        # (the actual Q and R matrices are logged in /init_Q, /init_R_ne, /init_R_g)
         exp_msg = Vector3Stamped()
         exp_msg.header.frame_id = EXP_NAME
         exp_msg.vector.x = EXPERIMENT
         exp_msg.vector.y = Q_SCALE
+        exp_msg.vector.z = R_SCALE
         self.datalog.log(exp_msg, topic_name = "/experiment")
 
         # Wheels speeds in rad/s are encoded as a Vector3 with timestamp, 
@@ -892,11 +899,8 @@ class LaptopPilot:
             # wheel_speed_msg.vector.x = 2 * np.pi  # Right wheel 0.5 rev/s = 1*pi rad/s
             # wheel_speed_msg.vector.y = 1 * np.pi  # Left wheel 1 rev/s = 2*pi rad/s
             
-            wheel_speed_msg.vector.x = q[0, 0]   # Right wheelq
+            wheel_speed_msg.vector.x = q[0, 0]   # Right wheel
             wheel_speed_msg.vector.y = q[1, 0]   # Left wheel
-            # wheel_speed_msg.vector.x = 0  # Right wheel
-            # wheel_speed_msg.vector.y = 0   # Left wheel
-
 
             self.cmd_wheelrate_right = wheel_speed_msg.vector.x
             self.cmd_wheelrate_left = wheel_speed_msg.vector.y
