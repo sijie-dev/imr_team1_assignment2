@@ -159,7 +159,7 @@ class LaptopPilot:
         #----------------------------------------------------------------
         aruco_params = {
             "port": 50002,  # Port to listen Arena1: 50001; Arena2: 50002 (CHANGE THIS to match the Arena you are testing in)
-            "marker_id": 22,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
+            "marker_id": 21,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
         }
         self.robot_ip = "192.168.90.1" # Don't change this        
 
@@ -233,8 +233,20 @@ class LaptopPilot:
         # parameters, motion limits and control-initialisation flag here.
 
         # tau & L
+        # self.tau_s = 1.5
+        # self.L = 1
+
+        # self.tau_s = 1
+        # self.L = 1
+
+        # self.tau_s = 2
+        # self.L = 1
+
+        # self.tau_s = 1.5
+        # self.L = 0.5
+
         self.tau_s = 1.5
-        self.L = 1
+        self.L = 1.5
 
         self.v_max = 0.15
         self.v_min = 0.02
