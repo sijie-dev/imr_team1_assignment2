@@ -51,9 +51,6 @@ DOTG = 4
 
 # For Q process noise (standard values, computed by calc_Q.py from the
 # Assignment 1 physical runs, kinematics only). Motion model restarted at ArUco
-# fix k and compared with fix k+m (m = 1..8); error variance fitted as
-# c + a*T^2 + b*T: b (random drift) -> Q_NE, Q_G; a (persistent velocity
-# error) -> Q_DOTX, Q_DOTG. Values are per EKF step (dt = 0.1 s).
 Q_NE_0   = 2.42e-05   # position drift per step [m^2],       sigma = 4.9 mm
 Q_G_0    = 2.09e-05   # heading drift per step [rad^2],      sigma = 0.26 deg
 Q_DOTX_0 = 6.57e-04   # linear velocity variance [(m/s)^2],  sigma = 0.026 m/s
