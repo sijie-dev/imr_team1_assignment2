@@ -41,6 +41,12 @@ from math_uos_imr import Inverse, HomogeneousTransformation
 # IMR_P7_T2_IMPORTS: Add the GPC classifier imports here.
 # IMR_P7_T3_IMPORTS: Add the GPR and particle-filter imports here.
 #----------------------------------------------------------------
+import joblib
+from model_uos_imr import gpc_scan
+from math_uos_imr import v2t, t2v
+from model_uos_imr import graphslam_frontend
+import copy
+from backend_fixed import optimise
 
 # Easy names for indexing
 N = 0
@@ -146,6 +152,17 @@ def h_ne_update(x):
     H[1, E] = 1
     return z, H  
 
+def wrap_angle(a):
+    return (a + np.pi) % (2 * np.pi) - np.pi
+
+def compose(p, dp):
+    g = float(p[2, 0])
+    out = Vector(3)
+    out[0, 0] = p[0, 0] + np.cos(g) * dp[0, 0] - np.sin(g) * dp[1, 0]
+    out[1, 0] = p[1, 0] + np.sin(g) * dp[0, 0] + np.cos(g) * dp[1, 0]
+    out[2, 0] = wrap_angle(g + dp[2, 0])
+    return out
+
 
 class LaptopPilot:
     def __init__(self, simulation):
@@ -230,8 +247,8 @@ class LaptopPilot:
         # parameters, motion limits and control-initialisation flag here.
 
         # tau & L
-        # self.tau_s = 1.5
-        # self.L = 1
+        self.tau_s = 1.5
+        self.L = 1.5
 
         # self.tau_s = 1
         # self.L = 1
@@ -242,8 +259,8 @@ class LaptopPilot:
         # self.tau_s = 1.5
         # self.L = 0.5
 
-        self.tau_s = 1.5
-        self.L = 1.5
+        # self.tau_s = 1.5
+        # self.L = 1.5
 
         self.v_max = 0.15
         self.v_min = 0.02
@@ -367,6 +384,30 @@ class LaptopPilot:
         # IMR_P7_T3_GPR_SETUP: Create the small particle filter, select
         # GPR weighting and define the GPR and observation uncertainties here
         #----------------------------------------------------------------
+        self.lidar_rb = None
+        self.new_lidar_scan = False
+
+        gpc_file = Path(__file__).resolve().parent / "gpc_json_corner_model.joblib"
+        self.gpc = joblib.load(gpc_file)
+        self.gpc_window = 5          
+        self.gpc_prob_thresh = 0.7  
+        print("Loaded GPC from", gpc_file)
+
+        self.graph = graphslam_frontend()
+        self.state_estimation_method = 3     # show_laptop draw point
+        self.keyframe_dist = 0.2             # 0.2 m
+        self.keyframe_angle = np.deg2rad(20) # 20° 
+        self.slam_node_pose = None           # new node pos in env
+        self.rel_state = None                # 小 EKF 状态 5×1，相对最新节点
+        self.rel_cov = None                  # 小 EKF 协方差 5×5
+
+        self.corner_gate = 0.6        # 数据关联门限 [m]
+        self.sigma_corner = 0.05      # 墙角测量的标准差 [m]（机器人坐标系）
+        self.n_landmarks = 0          # 已有多少个墙角
+        self.loop_pending = False     # 有没有"又看到旧墙角"，第 5 步用来决定要不要优化
+        self.opt_interval = 3.0       # 两次优化至少隔几秒
+        self.t_last_opt = -np.inf  
+        self.slam_turn_scale = 0.87   
 
         self.datalog = DataLogger(log_dir="logs")
 
@@ -513,6 +554,10 @@ class LaptopPilot:
         # LiDAR observations for display, retain the range-bearing scan and
         # set the new-scan flag to True here
         #----------------------------------------------------------------
+        rb = np.column_stack((np.asarray(msg.ranges, dtype=float), np.asarray(msg.angles, dtype=float)))
+        rb[rb[:, 0] <= 0, 0] = np.nan   
+        self.lidar_rb = rb
+        self.new_lidar_scan = True
 
         self.datalog.log(msg, topic_name="/lidar")
 
@@ -524,6 +569,93 @@ class LaptopPilot:
     # IMR_P7_T3_GPR_WEIGHT: Add the GPR particle-weight update method
     # here using the current range-bearing scan.
     #----------------------------------------------------------------
+    def detect_corner(self):
+        idx, prob, t_li = gpc_scan(self.lidar_rb, self.gpc_window, self.gpc,
+                                prob_thresh=self.gpc_prob_thresh, show_flag=False)
+        if idx is None or not np.all(np.isfinite(t_li)):
+            return None
+        # 1. 传感器坐标 → 机器人坐标，这就是测量值 z
+        z = t2v(self.lidar.H_bl.H @ v2t(t_li))
+
+        # 2. 让最新节点正好在"现在"的位置
+        d = np.hypot(self.rel_state[N, 0], self.rel_state[E, 0])
+        if d > 0.01 or abs(self.rel_state[G, 0]) > np.deg2rad(1):
+            self.add_keyframe()
+
+        # 3. 用 SLAM 位姿把墙角换算到环境坐标系（初始猜测 m）
+        dp = Vector(3)
+        dp[0, 0] = z[0, 0]
+        dp[1, 0] = z[1, 0]
+        m = compose(self.slam_node_pose, dp)[0:2]
+
+        # 4. 数据关联
+        lm_id, dist = self.associate(m)
+        if lm_id is None:
+            lm_id = self.n_landmarks
+            self.n_landmarks += 1
+            status = "new"
+        else:
+            self.loop_pending = True
+            status = "seen before, %.2f m away" % dist
+
+        # 5. 加观测边
+        sigma_z = (self.sigma_corner ** 2) * Identity(2)
+        self.graph.observation(m, sigma_z, lm_id, z)
+
+        self.corners.append([m[0, 0], m[1, 0]])
+        print("Corner id %d (%s) p=%.2f at N=%.2f E=%.2f"
+              % (lm_id, status, prob, m[0, 0], m[1, 0]))
+        return lm_id
+
+    def add_keyframe(self):
+        z = self.rel_state[0:3].copy()
+        z[2, 0] = wrap_angle(z[2, 0])
+        z_sigma = self.rel_cov[0:3, 0:3] + 1e-8 * Identity(3)
+        self.graph.motion(self.slam_node_pose.copy(), Matrix(3, 3), z, z_sigma)
+        self.slam_node_pose = compose(self.slam_node_pose, z)
+        self.rel_state = Vector(5)
+        self.rel_cov = Matrix(5, 5)
+        print("Keyframe %d: N=%.2f E=%.2f yaw=%.0f deg"
+              % (self.graph.pose_id, self.slam_node_pose[0, 0],
+                 self.slam_node_pose[1, 0], np.rad2deg(self.slam_node_pose[2, 0])))
+
+    def landmark_estimates(self):
+        est = {}
+        for k, lm_id in enumerate(self.graph.landmark_id_array):
+            est[lm_id] = self.graph.landmark[k]
+        return est
+
+    def associate(self, m):
+        best_id, best_d = None, self.corner_gate
+        for lm_id, l in self.landmark_estimates().items():
+            d = np.hypot(m[0, 0] - l[0, 0], m[1, 0] - l[1, 0])
+            if d < best_d:
+                best_id, best_d = lm_id, d
+        if best_id is None:
+            return None, None
+        return best_id, best_d
+    
+    def run_optimisation(self):
+        # 1. 在副本上把最新节点补进去，交给后端
+        g = copy.deepcopy(self.graph)
+        g.motion(self.slam_node_pose.copy(), Matrix(3, 3), final=True)
+        g = optimise(g)
+
+        # 2. 把优化结果抄回真正的图
+        n = len(self.graph.pose)
+        for i in range(n):
+            self.graph.pose[i] = np.array(g.pose[i], dtype=float).reshape(3, 1)
+        for k in range(len(self.graph.landmark)):
+            self.graph.landmark[k] = np.array(g.landmark[k], dtype=float).reshape(2, 1)
+
+        # 3. 最新节点的位姿也更新（当前 SLAM 位置 = 最新节点 ⊕ 小 EKF）
+        p = np.array(g.pose[n], dtype=float).reshape(3, 1)
+        p[2, 0] = wrap_angle(p[2, 0])
+        self.slam_node_pose = p
+
+        self.loop_pending = False
+        self.t_last_opt = self.t
+        print("Optimised: %d poses, %d landmarks" % (n + 1, self.n_landmarks))
 
     def groundtruth_callback(self, msg):
         """Log the ground-truth sample using the broadcast timestamp snapshot
@@ -681,6 +813,11 @@ class LaptopPilot:
 
                 self.t_prev = datetime.utcnow().timestamp()
                 self.t = 0
+
+                self.graph.anchor(self.init_covariance[0:3, 0:3])
+                self.slam_node_pose = self.state[0:3].copy()
+                self.rel_state = Vector(5)
+                self.rel_cov = Matrix(5, 5)
                 
                 self.generate_trajectory()
 
@@ -702,7 +839,10 @@ class LaptopPilot:
         #-------------- Guided-practicals -------------------------------
         # IMR_P7_T2_RUN_GPC: Run corner detection once when a new LiDAR
         # scan is available.
-        #----------------------------------------------------------------        
+        #---------------------------------------------------------------- 
+        if self.new_lidar_scan and not self.initialise_pose:
+            self.new_lidar_scan = False
+            self.detect_corner()       
         # IMR_P7_T3_RUN_GPR: Run GPR particle weighting once when a new
         # LiDAR scan is available.
         # IMR_P7_T3_MOVE_PARTICLES: In the GPR method After the specified elapsed time,
@@ -777,6 +917,18 @@ class LaptopPilot:
             self.est_pose_yaw_rad = p_robot[2, 0]
 
             self.cov = self.covariance
+
+            # 判断是否需要加关键帧
+            if abs(u[0, 0]) > 1e-3 or abs(u[1, 0]) > 1e-3:
+                u_slam = u.copy()
+                u_slam[1, 0] *= self.slam_turn_scale
+                self.rel_state, self.rel_cov = extended_kalman_filter_predict(
+                    self.rel_state, self.rel_cov, u_slam, motion_model, self.Q, dt)
+            d = np.hypot(self.rel_state[N, 0], self.rel_state[E, 0])
+            if d > self.keyframe_dist or abs(self.rel_state[G, 0]) > self.keyframe_angle:
+                self.add_keyframe()
+            if self.loop_pending and self.t - self.t_last_opt > self.opt_interval:
+                self.run_optimisation()
         #----------------------------------------------------------------
             msg = self.pose_parse([datetime.utcnow().timestamp(),
                                self.est_pose_northings_m,
