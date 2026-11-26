@@ -46,7 +46,7 @@ from model_uos_imr import gpc_scan
 from math_uos_imr import v2t, t2v
 from model_uos_imr import graphslam_frontend
 import copy
-from backend_fixed import optimise
+from backend import optimise
 
 # Easy names for indexing
 N = 0
