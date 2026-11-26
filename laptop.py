@@ -40,6 +40,8 @@ from math_uos_imr import Inverse, HomogeneousTransformation
 # IMR_P7_T1_IMPORTS: Add the LiDAR and range-angle model imports here.
 # IMR_P7_T2_IMPORTS: Add the GPC classifier imports here.
 # IMR_P7_T3_IMPORTS: Add the GPR and particle-filter imports here.
+from model_uos_imr import graphslam_backend
+from model_uos_imr import graphslam_frontend
 #----------------------------------------------------------------
 
 # Easy names for indexing
@@ -367,6 +369,11 @@ class LaptopPilot:
         # IMR_P7_T3_GPR_SETUP: Create the small particle filter, select
         # GPR weighting and define the GPR and observation uncertainties here
         #----------------------------------------------------------------
+
+        self.residual_threshold = 1E-12
+        self.delta_threshold = 1/1000
+        self.lim_iterations = 20
+        self.graph
 
         self.datalog = DataLogger(log_dir="logs")
 
@@ -746,24 +753,71 @@ class LaptopPilot:
             self.t += dt
             self.t_prev = t_now
 
-            # predict
-            self.state, self.covariance = extended_kalman_filter_predict(self.state, self.covariance, u, motion_model, self.Q, dt)
+            # # predict
+            # self.state, self.covariance = extended_kalman_filter_predict(self.state, self.covariance, u, motion_model, self.Q, dt)
 
-            # update -> camera correction
-            if self.new_camera_measurement and self.use_measurement_update:
-                # update pos
-                z_ne = Vector(2)
-                z_ne[0, 0] = self.measured_pose_northings_m
-                z_ne[1, 0] = self.measured_pose_eastings_m
-                self.state, self.covariance = extended_kalman_filter_update(self.state, self.covariance, z_ne, h_ne_update, self.R_ne)
+            # # update -> camera correction
+            # if self.new_camera_measurement and self.use_measurement_update:
+            #     # update pos
+            #     z_ne = Vector(2)
+            #     z_ne[0, 0] = self.measured_pose_northings_m
+            #     z_ne[1, 0] = self.measured_pose_eastings_m
+            #     self.state, self.covariance = extended_kalman_filter_update(self.state, self.covariance, z_ne, h_ne_update, self.R_ne)
 
-                # update gamma
-                z_g = Vector(1)
-                z_g[0, 0] = self.measured_pose_yaw_rad
-                self.state, self.covariance = extended_kalman_filter_update(self.state, self.covariance, z_g, h_g_update, self.R_g, wrap_index = 0)
+            #     # update gamma
+            #     z_g = Vector(1)
+            #     z_g[0, 0] = self.measured_pose_yaw_rad
+            #     self.state, self.covariance = extended_kalman_filter_update(self.state, self.covariance, z_g, h_g_update, self.R_g, wrap_index = 0)
 
-            # has been used
-            self.new_camera_measurement = False
+            # # has been used
+            # self.new_camera_measurement = False
+
+            n_interations = 0
+            delta_residual = 100
+            residual = 100
+
+            visualise_flag = False
+            iteration_continue = True
+            residual_continue = True
+            converge_continue = True
+
+            graph_opt = graphslam_backend(self.graph)
+            pose_graph = self.graph.reduce2pose(visualise_flag)
+            l = graph_opt.n*3
+
+            while iteration_continue and residual_continue and converge_continue:
+
+                graph_opt.solve(recover_sigma=True)
+
+                previous_residual = residual
+                residual = graph_opt.residual
+
+                delta_residual = abs((previous_residual - residual)/previous_residual)
+                n_iterations += 1
+
+                print("----- RESIDUAL -----")
+                print(self.graph.residual)
+                residual_continue = (residual > self.residual_threshold)
+                print(residual_continue)
+
+                print("----- ITERATION -----")
+                print(n_iterations)
+                iteration_continue = (n_iterations <= self.lim_iterations)
+                print(iteration_continue)
+
+                print("----- DELTA RESIDUAL -----")
+                print(delta_residual)
+                converge_continue = (delta_residual > self.delta_threshold)
+                print(converge_continue)
+
+                # reconstruct graph
+
+                graph_opt.state_vector[0:1] = pose_graph.state_vector
+                graph_opt.state_vector[1:] = Inverse(graph_opt.H[l:,l:])@(graph_opt.b[l:]+graph_opt.H[l:,0:l]@graph_opt.state_vector[0:l])
+                graph_opt = graphslam_frontend(graph_opt)
+                graph_opt.construct_graph()
+                graph_opt = graphslam_backend(graph_opt)
+                pose_graph = graph_opt.reduce2pose(visualise_flag)
 
             p_robot = Vector(3)
             p_robot[0] = self.state[0]
