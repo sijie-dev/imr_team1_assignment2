@@ -491,6 +491,12 @@ class LaptopPilot:
         self.true_wheel_speed_sub.stop()
         if self.simulation: self.groundtruth_sub.stop()
 
+
+
+
+
+        print("Graph saved",)
+
         print("Data saved in ",self.datalog.filename, "| experiment", EXPERIMENT, EXP_NAME)
                  
     def true_wheel_speeds_callback(self, msg):
@@ -1070,6 +1076,8 @@ class LaptopPilot:
         ################################################################################        
         # Send commands to the robot        
             if self.stop_flag == False: self.wheel_speed_pub.publish(wheel_speed_msg)
+            self.datalog.log(self.graph.pose, topic_name="/pose_graph")
+            self.datalog.log(self.graph, topic_name="/graph")
             self.datalog.log(wheel_speed_msg, topic_name="/wheel_speeds_cmd")
 
 
