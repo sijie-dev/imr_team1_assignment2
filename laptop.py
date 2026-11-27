@@ -637,19 +637,19 @@ class LaptopPilot:
     
     def run_optimisation(self):
         # 1. 在副本上把最新节点补进去，交给后端
-        # g = copy.deepcopy(self.graph)
-        self.graph.motion(self.slam_node_pose.copy(), Matrix(3, 3), final=True)
-        self.graph = optimise(self.graph)
+        g = copy.deepcopy(self.graph)
+        g.motion(self.slam_node_pose.copy(), Matrix(3, 3), final=True)
+        g = optimise(g)
 
         # 2. 把优化结果抄回真正的图
         n = len(self.graph.pose)
         for i in range(n):
-            self.graph.pose[i] = np.array(self.graph.pose[i], dtype=float).reshape(3, 1)
+            self.graph.pose[i] = np.array(g.pose[i], dtype=float).reshape(3, 1)
         for k in range(len(self.graph.landmark)):
-            self.graph.landmark[k] = np.array(self.graph.landmark[k], dtype=float).reshape(2, 1)
+            self.graph.landmark[k] = np.array(g.landmark[k], dtype=float).reshape(2, 1)
 
         # 3. 最新节点的位姿也更新（当前 SLAM 位置 = 最新节点 ⊕ 小 EKF）
-        p = np.array(self.graph.pose[n], dtype=float).reshape(3, 1)
+        p = np.array(g.pose[n], dtype=float).reshape(3, 1)
         p[2, 0] = wrap_angle(p[2, 0])
         self.slam_node_pose = p
 
