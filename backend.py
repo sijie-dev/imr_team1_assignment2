@@ -18,6 +18,9 @@ def optimise(graph,
     iteration_continue = True
     residual_continue = True
     converge_continue = True
+    visualise_flag = False
+
+    # pose_graph = graph_opt.reduce2pose(visualise_flag)
 
     while iteration_continue and residual_continue and converge_continue:
 
@@ -39,6 +42,8 @@ def optimise(graph,
 
         graph_opt = graphslam_frontend(backend)
         graph_opt.construct_graph()
+
+        # pose_graph = graph_opt.reduce2pose(visualise_flag)
 
     if verbose:
         print("optimise: %d iterations, final residual %.2e" % (n_iterations, residual))
