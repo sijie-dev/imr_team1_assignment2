@@ -173,7 +173,7 @@ class LaptopPilot:
         #----------------------------------------------------------------
         aruco_params = {
             "port": 50002,  # Port to listen Arena1: 50001; Arena2: 50002 (CHANGE THIS to match the Arena you are testing in)
-            "marker_id": 21,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
+            "marker_id": 25,  # Marker ID to listen to (CHANGE THIS to your marker ID)            
         }
         self.robot_ip = "192.168.90.1" # Don't change this        
 
@@ -214,7 +214,7 @@ class LaptopPilot:
         # lists and specify whether they are relative to the initial position
         #----------------------------------------------------------------
         # path
-        self.northings_path = [0, 1.5, 1.5, 0, 0, 1.5, 1.5, 0, 0]
+        self.northings_path = [0, 1.2, 1.2, 0, 0, 1.2, 1.2, 0, 0]
         self.eastings_path = [0, 0, 1, 1, 0, 0, 1, 1, 0]
 
         self.relative_path = True
@@ -367,7 +367,7 @@ class LaptopPilot:
         #   self.freespace_vector: Reactive navigation        
         ###############################################################
         # 设置使用 EKF
-        self.state_estimation_method = 1
+        self.state_estimation_method = 3
         self.cov = None              # method 1: state covariance
         self.particles = None        # method 2: particle cloud
         self.graph = None            # method 3: graph
@@ -394,7 +394,6 @@ class LaptopPilot:
         print("Loaded GPC from", gpc_file)
 
         self.graph = graphslam_frontend()
-        self.state_estimation_method = 3     # show_laptop draw point
         self.keyframe_dist = 0.2             # 0.2 m
         self.keyframe_angle = np.deg2rad(20) # 20° 
         self.slam_node_pose = None           # new node pos in env
@@ -407,7 +406,7 @@ class LaptopPilot:
         self.loop_pending = False     # 有没有"又看到旧墙角"，第 5 步用来决定要不要优化
         self.opt_interval = 3.0       # 两次优化至少隔几秒
         self.t_last_opt = -np.inf  
-        self.slam_turn_scale = 0.87   
+        self.slam_turn_scale = 0.91
 
         self.datalog = DataLogger(log_dir="logs")
 
@@ -925,7 +924,7 @@ class LaptopPilot:
                 self.rel_state, self.rel_cov = extended_kalman_filter_predict(
                     self.rel_state, self.rel_cov, u_slam, motion_model, self.Q, dt)
             d = np.hypot(self.rel_state[N, 0], self.rel_state[E, 0])
-            if d > self.keyframe_dist or abs(self.rel_state[G, 0]) > self.keyframe_angle:
+            if d > 0.01 or abs(wrap_angle(self.rel_state[G, 0])) > np.deg2rad(1):
                 self.add_keyframe()
             if self.loop_pending and self.t - self.t_last_opt > self.opt_interval:
                 self.run_optimisation()
